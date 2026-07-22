@@ -1,0 +1,16 @@
+# Secrets — never commit
+.env
+.env.local
+*.pem
+# Service-account key files (the JSON goes in .env as GOOGLE_SERVICE_ACCOUNT_JSON)
+*service-account*.json
+*-key.json
+benley-outbound-lead-*.json
+
+# Dependencies
+node_modules/
+
+# Logs & OS cruft
+npm-debug.log*
+*.log
+.DS_Store
