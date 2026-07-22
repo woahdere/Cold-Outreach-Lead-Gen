@@ -117,12 +117,38 @@ export async function buildCallList({
   };
 }
 
-// Run directly with `npm start`, using the SESSION constant above.
+/**
+ * Parse simple --flag value command-line args so a session can be launched with
+ * one command, no code editing:
+ *   npm start -- --search "marine detailing" --location "Pinellas County, FL" --count 60
+ * Any flag left out falls back to the SESSION defaults above.
+ */
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    const next = () => argv[++i];
+    switch (argv[i]) {
+      case "--search": out.searchTerms = next(); break;
+      case "--location": out.location = next(); break;
+      case "--count": out.desiredResults = Number(next()); break;
+      case "--label": out.targetLabel = next(); break;
+    }
+  }
+  return out;
+}
+
+// Run directly with `npm start` (flags optional; falls back to SESSION above).
 // (import.meta check keeps this from firing if the module is imported elsewhere.)
 const isDirectRun =
   process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isDirectRun) {
-  buildCallList(SESSION).catch((err) => {
+  const cli = parseArgs(process.argv.slice(2));
+  const session = { ...SESSION, ...cli };
+  // If a search was given on the command line but no label, derive a sensible one.
+  if (cli.searchTerms && !cli.targetLabel) {
+    session.targetLabel = `${cli.searchTerms} ${cli.location || ""}`.trim();
+  }
+  buildCallList(session).catch((err) => {
     console.error(`\n[FATAL] run failed: ${err.message}\n`);
     process.exitCode = 1;
   });
