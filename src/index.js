@@ -4,16 +4,15 @@
 // Run from Claude Code: the owner describes the target in conversation, Claude
 // fills in the targeting below (or calls buildCallList directly), and this runs:
 //
-//   scrape → floor at 10 reviews → score + sort → cap at 100 →
-//   Claude signal + opener per lead → write a fresh Google Sheet tab → log summary.
+//   scrape → normalize → flag (<50 reviews, no website) →
+//   sort by review count → cap at 100 → write a fresh Google Sheet tab → summary.
 //
-// This tool BUILDS THE LIST ONLY. It does not place calls.
+// No scoring model and no AI. This tool BUILDS THE LIST ONLY. It does not call.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { MIN_REVIEWS, MAX_LEADS } from "./config.js";
+import { LOW_REVIEW_THRESHOLD, MAX_LEADS } from "./config.js";
 import { runScrape } from "./apify.js";
-import { normalizeLead, scoreLead } from "./scoring.js";
-import { generateOpenersForLeads } from "./claudeAgent.js";
+import { normalizeLead, flagLead, sortLeads } from "./leads.js";
 import { writeCallList } from "./sheets.js";
 
 // ── SESSION TARGETING ─────────────────────────────────────────────────────────
@@ -25,8 +24,7 @@ const SESSION = {
   searchTerms: "marine detailing",
   // Area to search.
   location: "Pinellas County, Florida",
-  // How many places to ASK the scraper for. Some will fall below the review
-  // floor, so request more than the number of calls you want (e.g. 60–150).
+  // How many places to ASK the scraper for.
   desiredResults: 60,
   // Short human label used in the sheet tab name (date is added automatically).
   targetLabel: "pinellas marine detailing",
@@ -62,71 +60,48 @@ export async function buildCallList({
   });
   const totalScraped = rawItems.length;
 
-  // Keywords used for the category-match scoring bonus.
-  const targetKeywords = (Array.isArray(searchTerms) ? searchTerms : [searchTerms])
-    .join(" ")
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
-
-  // 4–5. Normalize, apply the hard 10-review floor, score everything above it.
-  // NO filtering beyond the floor — every qualifier stays, ranked best-first.
-  let belowFloor = 0;
-  const qualified = [];
+  // 4. Normalize + flag every business. Nothing is dropped for review count —
+  //    low-review and no-website listings are flagged, not removed.
+  const flagged = [];
   for (const raw of rawItems) {
-    let lead;
     try {
-      lead = normalizeLead(raw);
-      const score = scoreLead(lead, targetKeywords);
-      if (score === null) {
-        belowFloor++; // below the 10-review floor → excluded
-        continue;
-      }
-      qualified.push({ ...lead, score });
+      flagged.push(flagLead(normalizeLead(raw)));
     } catch (err) {
       // One malformed item never crashes the run.
       console.warn(`[index] skipped a malformed scrape item: ${err.message}`);
     }
   }
 
-  // Sort best-first by score.
-  qualified.sort((a, b) => b.score - a.score);
-
-  // 6. Cap at the top MAX_LEADS by score.
-  const cappedOff = Math.max(0, qualified.length - MAX_LEADS);
-  const kept = qualified.slice(0, MAX_LEADS);
+  // 5. Sort best-first (most reviews first), then cap at the top MAX_LEADS.
+  const sorted = sortLeads(flagged);
+  const cappedOff = Math.max(0, sorted.length - MAX_LEADS);
+  const kept = sorted.slice(0, MAX_LEADS);
 
   if (kept.length === 0) {
     console.log(
-      `\nNo qualifying leads (≥ ${MIN_REVIEWS} reviews) out of ${totalScraped} scraped. ` +
-        `Nothing written. Try a broader search term or a larger area.`
+      `\nNo businesses returned for that target. Nothing written. ` +
+        `Try a broader search term or a larger area.`
     );
-    return { totalScraped, belowFloor, qualified: 0, written: 0, cappedOff: 0 };
+    return { totalScraped, written: 0, lowReviews: 0, noWebsite: 0, cappedOff: 0 };
   }
 
-  // 7. One Claude call per kept lead → { signal, call_opener }.
-  console.log(
-    `\n[index] generating signal + call opener for ${kept.length} leads via Claude...`
-  );
-  const openers = await generateOpenersForLeads(kept);
-  kept.forEach((lead, i) => {
-    lead.signal = openers[i].signal;
-    lead.call_opener = openers[i].call_opener;
-  });
+  // Tallies for the summary.
+  const lowReviews = kept.filter((l) => l.flag_low_reviews === "YES").length;
+  const noWebsite = kept.filter((l) => l.flag_no_website === "YES").length;
 
-  // 8. Write the fresh, best-first call_list tab.
+  // 6. Write the fresh, sorted call_list tab.
   console.log(`\n[index] writing ${kept.length} leads to Google Sheets...`);
   const { tabName, rowsWritten, url } = await writeCallList(kept, targetLabel);
 
-  // 9. Run summary.
+  // 7. Run summary.
   console.log("\n=== RUN SUMMARY ===");
-  console.log(`  Total scraped:        ${totalScraped}`);
-  console.log(`  Below ${MIN_REVIEWS}-review floor: ${belowFloor} (excluded)`);
-  console.log(`  Qualified:            ${qualified.length}`);
-  console.log(`  Written to sheet:     ${rowsWritten}`);
-  console.log(`  Capped off (> ${MAX_LEADS}):  ${cappedOff}`);
-  console.log(`  Sheet tab:            ${tabName}`);
-  console.log(`  Open the sheet:       ${url}`);
+  console.log(`  Total scraped:            ${totalScraped}`);
+  console.log(`  Written to sheet:         ${rowsWritten}`);
+  console.log(`  Flagged low reviews (<${LOW_REVIEW_THRESHOLD}): ${lowReviews}`);
+  console.log(`  Flagged no website:       ${noWebsite}`);
+  console.log(`  Capped off (> ${MAX_LEADS}):      ${cappedOff}`);
+  console.log(`  Sheet tab:                ${tabName}`);
+  console.log(`  Open the sheet:           ${url}`);
   console.log("===================\n");
 
   // DIALING STEP — intentionally not implemented.
@@ -134,9 +109,9 @@ export async function buildCallList({
 
   return {
     totalScraped,
-    belowFloor,
-    qualified: qualified.length,
     written: rowsWritten,
+    lowReviews,
+    noWebsite,
     cappedOff,
     tabName,
   };

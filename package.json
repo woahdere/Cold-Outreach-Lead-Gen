@@ -1,7 +1,7 @@
 {
   "name": "cold-outreach-lead-gen",
   "version": "1.0.0",
-  "description": "On-demand cold-call list builder: launches a fresh Apify Google Maps scrape, scores and sorts the results, generates spoken-word call openers with Claude, and writes a session-ready call list to Google Sheets. Run from Claude Code.",
+  "description": "On-demand cold-call list builder: launches a fresh Apify Google Maps scrape, flags low-review and no-website listings, sorts by review count, and writes a session-ready call list to Google Sheets. Run from Claude Code.",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -11,7 +11,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.113.0",
     "apify-client": "2.23.4",
     "dotenv": "17.4.2",
     "googleapis": "173.0.0"

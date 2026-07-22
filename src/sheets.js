@@ -17,11 +17,11 @@ export const HEADERS = [
   "business_name",
   "phone",
   "website",
+  "category",
   "rating",
   "review_count",
-  "score",
-  "signal",
-  "call_opener",
+  "flag_low_reviews", // "YES" if under the low-review threshold (default <50)
+  "flag_no_website", // "YES" if the listing has no website
   "call_status", // left blank for the owner: Called / Voicemail / Booked / Not interested
 ];
 
@@ -61,17 +61,17 @@ export function buildTabName(targetLabel) {
   return name.slice(0, 100);
 }
 
-/** Convert one enriched lead into a sheet row, in HEADERS order. */
+/** Convert one flagged lead into a sheet row, in HEADERS order. */
 function rowFromLead(lead) {
   return [
     lead.name,
     lead.phone,
     lead.website,
+    lead.category,
     lead.rating,
     lead.reviewCount,
-    lead.score,
-    lead.signal || "",
-    lead.call_opener || "",
+    lead.flag_low_reviews || "",
+    lead.flag_no_website || "",
     "", // call_status — owner fills this in
   ];
 }
@@ -79,8 +79,9 @@ function rowFromLead(lead) {
 /**
  * Write the sorted call list to a fresh tab.
  *
- * @param {object[]} leads - enriched, already sorted best-first. Each lead has
- *        name, phone, website, rating, reviewCount, score, signal, call_opener.
+ * @param {object[]} leads - flagged, already sorted best-first. Each lead has
+ *        name, phone, website, category, rating, reviewCount, flag_low_reviews,
+ *        flag_no_website.
  * @param {string} targetLabel - short human label for the session (used in tab name).
  * @returns {Promise<{tabName:string, rowsWritten:number, url:string}>}
  */

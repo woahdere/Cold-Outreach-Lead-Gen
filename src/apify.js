@@ -3,11 +3,11 @@
 // The key behavior: every call starts a NEW actor run with dynamic input built
 // from the session's targeting. We never read a hardcoded/pre-existing dataset.
 //
-// REQUIRED FIELDS the scrape must return (scoring + openers go blind without them):
-//   business name, phone, website, rating, REVIEW COUNT, category, address.
+// REQUIRED FIELDS the scrape must return (the call list is blind without them):
+//   business name, phone, website, category, rating, REVIEW COUNT.
 // The default actor (compass/crawler-google-places) returns all of these. If you
 // swap APIFY_ACTOR_ID to a different scraper, confirm it still returns them —
-// especially review count, which the entire scoring system depends on.
+// especially review count, which the low-review flag depends on.
 
 import { ApifyClient } from "apify-client";
 import { config } from "./config.js";
